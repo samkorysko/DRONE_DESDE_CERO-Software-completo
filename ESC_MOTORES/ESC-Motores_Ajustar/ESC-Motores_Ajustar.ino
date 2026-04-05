@@ -21,24 +21,25 @@
 #define pin_Throttle 8  // Pin throttle del mando RC
 #define pin_LED_rojo 13 // Pin LED rojo
 
-#include <EnableInterrupt.h>
+#include <TimerOne.h>
 
 // PWM
 float ESC1_us, ESC2_us, ESC3_us, ESC4_us, loop_timer;
 long tiempo_motores_start;
 
 // AJUSTE MANDO RC - THROTLLE
+volatile byte processData[5] = {0,0,0,0,0};
+volatile byte rawData[5] = {0,0,0,0,0};
 float RC_Throttle_consigna;
 const int us_max_Throttle_adj = 2000;
 const int us_min_Throttle_adj = 950;
-const float us_max_Throttle_raw = 2004; // <-- Si teneis la entrada Throttle invertida sustituid este valor
-const float us_min_Throttle_raw = 1116; // <-- por este y viceversa
+
 
 // INTERRUPCIÓN MANDO RC --> THROTTLE
 volatile long Throttle_HIGH_us;
 volatile int RC_Throttle_raw;
 void Mando_datos() {
- 
+   memcpy((void*)processData, (void*)rawData, sizeof(rawData));
 }
 
 void setup() {
@@ -64,7 +65,7 @@ void setup() {
   digitalWrite(pin_motor3, LOW); // Motor 3 LOW por seguridad
   digitalWrite(pin_motor4, LOW); // Motor 4 LOW por seguridad
 
-  Serial.println("Encender mando RC y subir throttle al maximo");
+  Serial.print("Encender mando RC y subir throttle al maximo");
   // Hasta no subir Throttle al maximo no salimos de este bucle while
   while (RC_Throttle_consigna > 2100 || RC_Throttle_consigna < 1900) {
     RC_Throttle_consigna = map(RC_Throttle_raw, us_min_Throttle_raw, us_max_Throttle_raw, us_min_Throttle_adj, us_max_Throttle_adj);
@@ -78,8 +79,16 @@ void loop() {
   while (micros() - loop_timer < usCiclo);
   loop_timer = micros();
 
+   if (Serial.available() >= 5) {
+      if (Serial.read() == 255) { // Si es el byte de inicio
+         for (int i = 0; i < 4; i++) {
+         rawData[i] = Serial.read();
+         }
+      }
+   }
+
   //  Ecuaciones de procesamiento de la señal Throttle
-  RC_Throttle_consigna  = map(RC_Throttle_raw, us_min_Throttle_raw, us_max_Throttle_raw, us_min_Throttle_adj, us_max_Throttle_adj);
+  RC_Throttle_consigna  = map(processData[1], 0, 160, us_min_Throttle_adj, us_max_Throttle_adj);
 
   // La señal RC_Throttle_consigna define el tiempo que la señal PWM está en estado HIGH 
   ESC1_us = RC_Throttle_consigna;
