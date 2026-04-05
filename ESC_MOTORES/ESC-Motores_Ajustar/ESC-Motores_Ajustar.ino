@@ -37,9 +37,8 @@ const float us_min_Throttle_raw = 1116; // <-- por este y viceversa
 // INTERRUPCIÓN MANDO RC --> THROTTLE
 volatile long Throttle_HIGH_us;
 volatile int RC_Throttle_raw;
-void INT_Throttle() {
-  if (digitalRead(pin_Throttle) == HIGH) Throttle_HIGH_us = micros();
-  if (digitalRead(pin_Throttle) == LOW)  RC_Throttle_raw  = micros() - Throttle_HIGH_us;
+void Mando_datos() {
+ 
 }
 
 void setup() {
@@ -52,8 +51,8 @@ void setup() {
   Serial.begin(115200);
 
   // Interrupción para canal Thrtottle
-  pinMode(pin_Throttle, INPUT_PULLUP);
-  enableInterrupt(pin_Throttle, INT_Throttle, CHANGE);
+  Timer1.initialize(20000);
+  Timer1.attachInterrupt(Mando_datos);
 
   // Decalaración de motores
   pinMode(pin_motor1, OUTPUT);   // Declarar motor 1
