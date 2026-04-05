@@ -109,7 +109,7 @@ float RC_Throttle_consigna, RC_Pitch_consigna, RC_Roll_consigna, RC_Yaw_consigna
 // LEER MANDO RC - TROTTLE
 
 void Mando_datos() {
-    memcpy((void*)processData, (void*)rawData, sizeof(rawData));p
+    memcpy((void*)processData, (void*)rawData, sizeof(rawData));
 }
 
 void setup() {
