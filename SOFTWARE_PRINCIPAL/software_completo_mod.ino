@@ -26,16 +26,15 @@ bool MODO_vuelo = 1;   // 0: Modo acrobatico, 1: Modo estable (por defecto MODO_
 #define pin_INT_Yaw 7       // Pin Yaw del mando RC
 #define pin_INT_Pitch 12    // Pin Pitch del mando RC
 #define pin_INT_Roll 9      // Pin Roll del mando RC
-#define pin_LED_rojo1 10    // Pin LED rojo 1      
+#define pin_LED_rojo1 10    // Pin LED rojo 1      // Probablemente modificaremos esto
 #define pin_LED_rojo2 13    // Pin LED rojo 2    
 #define pin_LED_azul 11     // Pin LED azul    
 #define pin_LED_naranja A2  // Pin LED naranja    
 // --------------------------------------------------------------------------------
 
-#include <EnableInterrupt.h>
+#include <TimerOne.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+
 
 // AJUSTE DE PIDs
 // Modificar estos parámetros apara ajustar los PID
@@ -58,27 +57,24 @@ float PID_W_Roll_error, PID_W_Roll_P, PID_W_Roll_I, PID_W_Roll_D, PID_W_Roll_OUT
 float PID_W_Yaw_error, PID_W_Yaw_P, PID_W_Yaw_I, PID_W_Yaw_D, PID_W_Yaw_OUT;
 float PID_W_Pitch_consigna, PID_W_Roll_consigna;
 
+volatile byte processData[5] = {0,0,0,0,0};
+volatile byte rawData[5] = {0,0,0,0,0};
+volatile int throttle, yaw, pitch, roll;
+
 // AJUSTE MANDO RC - THROTLLE
 const int us_max_Throttle_adj = 1800;
 const int us_min_Throttle_adj = 970;
-const float us_max_Throttle_raw = 2004;  // <-- Si la entrada Throttle está invertida sustituir este valor
-const float us_min_Throttle_raw = 1116;  // <-- por este y viceversa
 
 // AJUSTE MANDO RC - PITCH
-const float us_max_Pitch_raw = 1952;
-const float us_min_Pitch_raw = 992;
+
 const int us_max_Pitch_adj = -30;  // <-- Si la entrada Pitch está invertida sustituir este valor
 const int us_min_Pitch_adj = 30;   // <-- por este y viceversa
 
 // AJUSTE MANDO RC - ROLL
-const float us_max_Roll_raw = 1960;
-const float us_min_Roll_raw = 992;
 const int us_max_Roll_adj = 30;    // <-- Si la entrada Roll está invertida sustituir este valor
 const int us_min_Roll_adj = -30;   // <-- por este y viceversa
 
 // AJUSTE MANDO RC - YAW
-const float us_max_Yaw_raw = 1928;
-const float us_min_Yaw_raw = 972;
 const int us_max_Yaw_adj = 30;     // <-- Si la entrada Yaw está invertida sustituir este valor
 const int us_min_Yaw_adj = -30;    // <-- por este y viceversa
 
@@ -107,39 +103,13 @@ int LED_contador;
 float ESC1_us, ESC2_us, ESC3_us, ESC4_us;
 
 // MANDO RC
-float RC_Throttle_filt, RC_Pitch_filt, RC_Yaw_filt, RC_Roll_filt;
+float Throttle_filt, Pitch_filt, Yaw_filt, Roll_filt;
 float RC_Throttle_consigna, RC_Pitch_consigna, RC_Roll_consigna, RC_Yaw_consigna;
 
 // LEER MANDO RC - TROTTLE
-volatile long Throttle_HIGH_us;
-volatile int RC_Throttle_raw;
-void INT_Throttle() {
-  if (digitalRead(pin_INT_Throttle) == HIGH)Throttle_HIGH_us = micros();
-  if (digitalRead(pin_INT_Throttle) == LOW) RC_Throttle_raw  = micros() - Throttle_HIGH_us;
-}
 
-// INTERRUPCIÓN MANDO RC - PITCH
-volatile long Pitch_HIGH_us;
-volatile int RC_Pitch_raw;
-void INT_Pitch() {
-  if (digitalRead(pin_INT_Pitch) == HIGH)Pitch_HIGH_us = micros();
-  if (digitalRead(pin_INT_Pitch) == LOW) RC_Pitch_raw  = micros() - Pitch_HIGH_us;
-}
-
-// INTERRUPCIÓN MANDO RC - ROLL
-volatile long Pitch_Roll_us;
-volatile int RC_Roll_raw;
-void INT_Roll() {
-  if (digitalRead(pin_INT_Roll) == HIGH)Pitch_Roll_us = micros();
-  if (digitalRead(pin_INT_Roll) == LOW) RC_Roll_raw   = micros() - Pitch_Roll_us;
-}
-
-// INTERRUPCIÓN MANDO RC - YAW
-volatile long Pitch_Yaw_us;
-volatile int RC_Yaw_raw;
-void INT_Yaw() {
-  if (digitalRead(pin_INT_Yaw) == HIGH)Pitch_Yaw_us = micros();
-  if (digitalRead(pin_INT_Yaw) == LOW) RC_Yaw_raw   = micros() - Pitch_Yaw_us;
+void Mando_datos() {
+    memcpy((void*)processData, (void*)rawData, sizeof(rawData));p
 }
 
 void setup() {
@@ -162,15 +132,8 @@ void setup() {
   pinMode(pin_LED_rojo2, OUTPUT);   // Led rojo 2  --> Tiempo de ciclo o de 1ms excedido
 
   // MandoRC: declaración de interrupciones
-  pinMode(pin_INT_Yaw, INPUT_PULLUP);                
-  enableInterrupt(pin_INT_Yaw, INT_Yaw, CHANGE);
-  pinMode(pin_INT_Throttle, INPUT_PULLUP);           
-  enableInterrupt(pin_INT_Throttle, INT_Throttle, CHANGE);
-  pinMode(pin_INT_Pitch, INPUT_PULLUP);              
-  enableInterrupt(12, INT_Pitch, CHANGE);
-  pinMode(pin_INT_Roll, INPUT_PULLUP);                 
-  enableInterrupt(pin_INT_Roll, INT_Roll, CHANGE);
-
+  Timer1.initialize(2000);
+  Timer1.attachInterrupt(Mando_datos);
   // Declaración de los pines de los motores
   pinMode(pin_motor1, OUTPUT);  //Motor 1
   pinMode(pin_motor2, OUTPUT);  //Motor 2
@@ -213,7 +176,13 @@ void loop() {
   while (micros() - loop_timer < usCiclo);
   // Registrar instante de comienzo del ciclo
   loop_timer = micros();
-
+  if (Serial.available() >= 5) {
+    if (Serial.read() == 255) { // Si es el byte de inicio
+      for (int i = 0; i < 4; i++) {
+        rawData[i] = Serial.read();
+      }
+    }
+  }
   PWM();                           // Generar señales PWM para los motores
   MPU6050_leer();                  // Leer sensor MPU6050
   MPU6050_procesar();              // Procesar datos del sensor MPU6050
@@ -379,17 +348,21 @@ void MPU6050_procesar() {
 }
 
 void RC_procesar() {
-  //  Filtrado de lecturas raw del mando RC
-  RC_Throttle_filt = RC_Throttle_filt * 0.9 + RC_Throttle_raw * 0.1;
-  RC_Pitch_filt    = RC_Pitch_filt * 0.9 + RC_Pitch_raw * 0.1;
-  RC_Roll_filt     = RC_Roll_filt  * 0.9 + RC_Roll_raw  * 0.1;
-  RC_Yaw_filt      = RC_Yaw_filt   * 0.9 + RC_Yaw_raw   * 0.1;
+    throttle = map(processData[1], 0, 160, us_min_Throttle_adj, us_max_Throttle_adj);
+    yaw = map(processData[2], 0, 160, us_min_Yaw_adj, us_max_Yaw_adj);
+    pitch = map(processData[3], 0, 160, us_min_Pitch_adj, us_max_Pitch_adj);
+    roll = map(processData[4], 0, 160, us_min_Roll_adj, us_max_Roll_adj);
+  //  Filtrado de lecturas del mando RC
+  Throttle_filt = Throttle_filt * 0.9 + throttle * 0.1;
+  Pitch_filt = Pitch_filt * 0.9 + pitch * 0.1;
+  Roll_filt = Roll_filt  * 0.9 + roll  * 0.1;
+  Yaw_filt = Yaw_filt   * 0.9 + yaw   * 0.1;
 
-  // Mapeo de señales del mando RC
-  RC_Throttle_consigna = map(RC_Throttle_filt, us_min_Throttle_raw, us_max_Throttle_raw, us_min_Throttle_adj, us_max_Throttle_adj);
-  RC_Pitch_consigna    = map(RC_Pitch_filt, us_min_Pitch_raw, us_max_Pitch_raw, us_min_Pitch_adj, us_max_Pitch_adj);
-  RC_Roll_consigna     = map(RC_Roll_filt, us_min_Roll_raw, us_max_Roll_raw, us_min_Roll_adj, us_max_Roll_adj);
-  RC_Yaw_consigna      = map(RC_Yaw_filt, us_min_Yaw_raw, us_max_Yaw_raw, us_min_Yaw_adj, us_max_Yaw_adj);
+  // Señales definitivas
+  RC_Throttle_consigna = Throttle_filt;
+  RC_Pitch_consigna = Pitch_filt;
+  RC_Roll_consigna = Roll_filt;
+  RC_Yaw_consigna = Yaw_filt;
 
   // Si las lecturas son cercanas a 0, las forzamos a 0 para evitar inclinar el drone por error
   if (RC_Pitch_consigna < 3 && RC_Pitch_consigna > -3)RC_Pitch_consigna = 0;
