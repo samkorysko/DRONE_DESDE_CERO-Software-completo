@@ -132,7 +132,7 @@ void setup() {
   pinMode(pin_LED_rojo2, OUTPUT);   // Led rojo 2  --> Tiempo de ciclo o de 1ms excedido
 
   // MandoRC: declaración de interrupciones
-  Timer1.initialize(2000);
+  Timer1.initialize(20000);
   Timer1.attachInterrupt(Mando_datos);
   // Declaración de los pines de los motores
   pinMode(pin_motor1, OUTPUT);  //Motor 1
